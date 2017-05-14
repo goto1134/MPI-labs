@@ -1,0 +1,4 @@
+add_subdirectory(Latency)
+add_subdirectory(ChannelCapacity)
+add_subdirectory(BroadcastOPS)
+add_subdirectory(ReduceOPS)
