@@ -31,13 +31,15 @@ int main(int argc, char **argv) {
 		if(rank == 0) {
 			printf("World size is %d\n", world_size);
 			printf("Number of tries is %d\n", numberOfSendings);
-			for(int destination = 1; destination < world_size; ++destination) {
+			int destination;
+			for(destination = 1; destination < world_size; ++destination) {
 				printf("Counting latency with processor %d of %d\n", destination, world_size - 1);
 				double timeForNSendings = 0;
 
 				clock_t start, end;
 				start = clock();
-				for(int sending = 0; sending < numberOfSendings; ++sending) {
+				int sending;
+				for(sending = 0; sending < numberOfSendings; ++sending) {
 					MPI_Send(NULL, 0, MPI_BYTE, destination, 1, MPI_COMM_WORLD);
 					MPI_Recv(NULL, 0, MPI_BYTE, destination, 1, MPI_COMM_WORLD, &status);
 				}
@@ -47,7 +49,8 @@ int main(int argc, char **argv) {
 				printf("Latency = %f\n", ((double) (end - start)) / (double) (2 * numberOfSendings));
 			}
 		} else {
-			for(int sending = 0; sending < numberOfSendings; ++sending) {
+            int sending;
+            for(sending = 0; sending < numberOfSendings; ++sending) {
 				MPI_Recv(NULL, 0, MPI_BYTE, 0, 1, MPI_COMM_WORLD, &status);
 				MPI_Send(NULL, 0, MPI_BYTE, 0, 1, MPI_COMM_WORLD);
 			}
