@@ -44,8 +44,8 @@ int main(int argc, char **argv) {
                     MPI_Recv(NULL, 0, MPI_BYTE, destination, 1, MPI_COMM_WORLD, &status);
                 }
                 end = clock();
-                timeForNSendings = (double) (end - start);
-                printf("time for %d cycles with %d = %f milliseconds\n",
+                timeForNSendings = (double) (end - start) / CLOCKS_PER_SEC;
+                printf("time for %d cycles with %d = %f seconds\n",
                        numberOfSendings, destination, timeForNSendings);
                 printf("Latency = %f\n", timeForNSendings / (double) (2 * numberOfSendings));
             }
