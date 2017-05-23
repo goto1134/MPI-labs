@@ -27,8 +27,8 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     MPI_Status status;
-    clock_t start, end;
 
+    clock_t start, end;
     double timeForNSendings, timeForNBroadcasts;
     if (world_size < 2) {
         printf("World is too small\n");
@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
             }
         }
         end = clock();
-        timeForNSendings = (double) (end - start);
+        timeForNSendings = (double) (end - start) / CLOCKS_PER_SEC;
         printf("time for %d send operations = %f \n", numberOfSendings, timeForNSendings);
         printf("OPS = %f\n", (double) numberOfSendings / timeForNSendings);
 
@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     }
     if (isMaster) {
         end = clock();
-        timeForNBroadcasts = (double) (end - start);
+        timeForNBroadcasts = (double) (end - start) / CLOCKS_PER_SEC;
         printf("time for %d broadcast operations = %f \n", numberOfSendings, timeForNBroadcasts);
         printf("OPS = %f\n", (double) numberOfSendings / timeForNBroadcasts);
     }
