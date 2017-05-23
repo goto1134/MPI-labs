@@ -42,18 +42,21 @@ int main(int argc, char **argv) {
 
         start = clock();
 
-        for (int sending = 0; sending < numberOfSendings; ++sending) {
-            for (int destination = 1; destination < world_size; ++destination) {
+        int sending;
+        int destination;
+        for (sending = 0; sending < numberOfSendings; ++sending) {
+            for (destination = 1; destination < world_size; ++destination) {
                 MPI_Send(NULL, 0, MPI_BYTE, destination, 1, MPI_COMM_WORLD);
             }
         }
         end = clock();
-        timeForNSendings = ((double) (end - start) / 1000000.0F) * 1000;
+        timeForNSendings = (double) (end - start);
         printf("time for %d send operations = %f \n", numberOfSendings, timeForNSendings);
         printf("OPS = %f\n", (double) numberOfSendings / timeForNSendings);
 
     } else {
-        for (int sending = 0; sending < numberOfSendings; ++sending) {
+        int sending;
+        for (sending = 0; sending < numberOfSendings; ++sending) {
             MPI_Recv(NULL, 0, MPI_BYTE, 0, 1, MPI_COMM_WORLD, &status);
         }
     }
@@ -63,12 +66,13 @@ int main(int argc, char **argv) {
     if (isMaster) {
         start = clock();
     }
-    for (int sending = 0; sending < numberOfSendings; ++sending) {
+    int sending;
+    for (sending = 0; sending < numberOfSendings; ++sending) {
         MPI_Bcast(NULL, 0, MPI_BYTE, 0, MPI_COMM_WORLD);
     }
     if (isMaster) {
         end = clock();
-        timeForNBroadcasts = ((double) (end - start) / 1000000.0F) * 1000;
+        timeForNBroadcasts = (double) (end - start);
         printf("time for %d broadcast operations = %f \n", numberOfSendings, timeForNBroadcasts);
         printf("OPS = %f\n", (double) numberOfSendings / timeForNBroadcasts);
     }

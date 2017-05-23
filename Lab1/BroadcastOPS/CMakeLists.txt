@@ -4,8 +4,6 @@ project(MPI_BroadcastOPS)
 find_package(MPI REQUIRED)
 include_directories(${MPI_INCLUDE_PATH})
 
-set(CMAKE_C_STANDARD 99)
-
 set(SOURCE_FILES BroadcastOPS.c)
 
 
