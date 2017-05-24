@@ -50,10 +50,10 @@ int main(int argc, char **argv) {
                     MPI_Recv(bytes, numberOfBytes, MPI_BYTE, destination, 1, MPI_COMM_WORLD, &status);
                 }
                 end = clock();
-                timeForNSendings = (double) (end - start);
-                printf("time for %d cycles with %d = %f millis \n", numberOfSendings, destination, timeForNSendings);
-                printf("Channel capacity = %f b/ms\n",
-                       ((double) numberOfBytes / timeForNSendings * 2 * numberOfSendings ));
+                timeForNSendings = (double) (end - start) / CLOCKS_PER_SEC;
+                printf("time for %d cycles with %d = %f seconds \n", numberOfSendings, destination, timeForNSendings);
+                printf("Channel capacity = %f b/s\n",
+                       ((double) numberOfBytes / timeForNSendings * 2 * numberOfSendings));
             }
         } else {
             int sending;
