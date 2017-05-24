@@ -4,8 +4,6 @@ project(MPI_ReduceOPS)
 find_package(MPI REQUIRED)
 include_directories(${MPI_INCLUDE_PATH})
 
-set(CMAKE_C_STANDARD 99)
-
 set(SOURCE_FILES ReduceOPS.c)
 
 add_executable(MPI_ReduceOPS ${SOURCE_FILES})
