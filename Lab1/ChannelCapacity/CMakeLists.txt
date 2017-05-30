@@ -1,8 +1,4 @@
-cmake_minimum_required(VERSION 3.7)
 project(MPI_ChannelCapacity)
-
-find_package(MPI REQUIRED)
-include_directories(${MPI_INCLUDE_PATH})
 
 set(SOURCE_FILES ChannelCapacity.c)
 
