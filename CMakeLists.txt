@@ -7,3 +7,4 @@ include_directories(${MPI_INCLUDE_PATH})
 
 project(MPI_labs)
 add_subdirectory(Lab1)
+add_subdirectory(Lab2)
