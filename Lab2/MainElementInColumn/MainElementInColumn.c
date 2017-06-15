@@ -2,14 +2,11 @@
 // Created by Andrew on 30.05.2017.
 //
 
-//
-// Created by Andrew on 27.04.2017.
-//
 #include <mpi.h>
 #include <stdio.h>
-#include <time.h>
 #include <math.h>
 #include <stdlib.h>
+#include <time.h>
 
 static const int MASTER_NODE_RANK = 0;
 
@@ -17,25 +14,19 @@ static const int INITIAL_MATRIX_TAG = 1;
 
 static const int CURRENT_WORKER_TAG = 2;
 
-int getEquationCountForDouble(int rank);
+int minimumEquationCount(int dataTypeSizeInBytes, int numberOfComputationalNodes, int minimumSizeOfSystemPerNode);
 
-double *generateMatrix(int numberOfEquations, int worldSize, int index);
+int getEquationCountForDouble(int worldSize);
+
+void fillMatrix(int numberOfEquations, int worldSize, int index, double *matrix);
 
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        printf("usage: reduceOps <number-of-sendings>");
-        return 1;
-    }
-    int numberOfSendings;
-    if (sscanf(argv[1], "%i", &numberOfSendings) != 1) {
-        fprintf(stderr, "error - not an integer");
-        return 1;
-    }
+
     MPI_Init(&argc, &argv);
 
     // Get the number of processes
-    int world_size;
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    int worldSize;
+    MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
 
     // Get the rank of the process
     int rank;
@@ -45,7 +36,7 @@ int main(int argc, char **argv) {
     clock_t start, end;
     double timeForNSendings, timeForNReduce;
 
-    if (world_size < 2) {
+    if (worldSize < 2) {
         printf("World is too small\n");
         return 1;
     }
@@ -56,26 +47,30 @@ int main(int argc, char **argv) {
     int oneBlockSize;
 
     if (isMaster) {
-        printf("World size is %d\n", world_size);
+        printf("World size is %d\n", worldSize);
 
-        equationCount = getEquationCountForDouble(rank);
-        equationsPerNode = equationCount / (world_size - 1);
+        equationCount = getEquationCountForDouble(worldSize);
+        equationsPerNode = equationCount / (worldSize - 1);
         oneBlockSize = (equationCount + 1) * equationsPerNode;
+        printf("Equation count is %d\nwith %d per node\nwith size of %d\n", equationCount, equationsPerNode,
+               oneBlockSize);
     }
+
     MPI_Bcast(&equationCount, 1, MPI_INT, MASTER_NODE_RANK, MPI_COMM_WORLD);
     MPI_Bcast(&equationsPerNode, 1, MPI_INT, MASTER_NODE_RANK, MPI_COMM_WORLD);
     MPI_Bcast(&oneBlockSize, 1, MPI_INT, MASTER_NODE_RANK, MPI_COMM_WORLD);
 
-    double *matrix;
+    double *matrix = malloc(oneBlockSize * sizeof(double));
     if (isMaster) {
-        printf("Starting the sending of data");
+        printf("Starting the sending of data\n");
         srand((unsigned int) time(0));
 
-        for (int i = 1; i < world_size; ++i) {
-            matrix = generateMatrix(equationCount, world_size, i - 1);
+        int i;
+        for (i = 1; i < worldSize; ++i) {
+            fillMatrix(equationCount, worldSize, i - 1, matrix);
             MPI_Send(matrix, oneBlockSize, MPI_DOUBLE, i, INITIAL_MATRIX_TAG, MPI_COMM_WORLD);
-            free(matrix);
         }
+        free(matrix);
     } else {
         MPI_Recv(matrix, oneBlockSize, MPI_DOUBLE, MASTER_NODE_RANK, INITIAL_MATRIX_TAG, MPI_COMM_WORLD, &status);
     }
@@ -104,24 +99,35 @@ int main(int argc, char **argv) {
 //        printf("OPS = %f\n", (double) numberOfSendings / timeForNReduce);
 //
 //    }
+    if (!isMaster) {
+        free(matrix);
+    }
     MPI_Finalize();
 }
 
-int getEquationCountForDouble(int rank) {
-    double doubleSize = (double) sizeof(double);
-    int minValue = (int) ceil(((sqrt(doubleSize + 400. * (rank - 1)) / doubleSize) - 1.) / 2.);
-    return minValue + minValue % (rank - 1);
+int getEquationCountForDouble(int worldSize) {
+    int doubleSize = sizeof(double);
+    int oneHundreedMegaBytes = 100 * 1024 * 1024;
+    int minValue = minimumEquationCount(doubleSize, worldSize - 1, oneHundreedMegaBytes);
+    return minValue - minValue % (worldSize - 1) + worldSize - 1;
 }
 
-double *generateMatrix(int numberOfEquations, int worldSize, int index) {
+void fillMatrix(int numberOfEquations, int worldSize, int index, double *block) {
     int blockSize = numberOfEquations / (worldSize - 1);
-    double *block = malloc(sizeof(double) * blockSize * (numberOfEquations + 1));
-    for (int i = 0; i < numberOfEquations; ++i) {
-        for (int j = 0; j < numberOfEquations; ++j) {
-            int mainIndex = index * (worldSize - 1) + i;
-            block[i * blockSize + j] = ((double) rand() / (double) RAND_MAX) * (j != mainIndex ? 10. : 100.);
+    int i;
+    int j;
+    int mainIndex;
+    for (i = 0; i < blockSize; ++i) {
+        for (j = 0; j < numberOfEquations - 1; ++j) {
+            mainIndex = index * (worldSize - 1) + i;
+            block[i * numberOfEquations + j] = ((double) rand() / (double) RAND_MAX) * (j != mainIndex ? 10. : 100.);
         }
-        block[i * numberOfEquations] = ((double) rand() / (double) RAND_MAX) * 20 - 10;
+        block[i * numberOfEquations + numberOfEquations - 1] = ((double) rand() / (double) RAND_MAX) * 20 - 10;
     }
-    return block;
+}
+
+int minimumEquationCount(int dataTypeSizeInBytes, int numberOfComputationalNodes, int minimumSizeOfSystemPerNode) {
+    return (int) ceil((sqrt((4. * minimumSizeOfSystemPerNode * numberOfComputationalNodes + dataTypeSizeInBytes)
+                            / (double) dataTypeSizeInBytes) - 1.)
+                      / 2.);
 }
