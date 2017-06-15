@@ -120,7 +120,9 @@ void fillMatrix(int numberOfEquations, int worldSize, int index, double *block) 
     for (i = 0; i < blockSize; ++i) {
         for (j = 0; j < numberOfEquations - 1; ++j) {
             mainIndex = index * (worldSize - 1) + i;
-            block[i * numberOfEquations + j] = ((double) rand() / (double) RAND_MAX) * (j != mainIndex ? 10. : 100.);
+            block[i * numberOfEquations + j] = j == mainIndex
+                                               ? 10 + (double) rand() / (double) RAND_MAX * 100
+                                               : ((double) rand() / (double) RAND_MAX) * 10;
         }
         block[i * numberOfEquations + numberOfEquations - 1] = ((double) rand() / (double) RAND_MAX) * 20 - 10;
     }
