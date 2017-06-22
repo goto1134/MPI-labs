@@ -62,8 +62,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    int i;
-    int j;
     int isMaster = rank == MASTER_NODE_RANK;
     int equationCount;
     int columnsPerNode;
@@ -87,10 +85,10 @@ int main(int argc, char **argv) {
     if (isMaster) {
         printf("Starting the sending of data\n");
         srand((unsigned int) time(0));
-
-        for (i = 1; i < worldSize; ++i) {
-            generateColumnBlock(equationCount, worldSize, i - 1, matrix);
-            MPI_Send(matrix, oneBlockSize, MPI_DOUBLE, i, INITIAL_MATRIX_TAG, MPI_COMM_WORLD);
+        int node;
+        for (node = 1; node < worldSize; ++node) {
+            generateColumnBlock(equationCount, worldSize, node - 1, matrix);
+            MPI_Send(matrix, oneBlockSize, MPI_DOUBLE, node, INITIAL_MATRIX_TAG, MPI_COMM_WORLD);
         }
         free(matrix);
         matrix = malloc(equationCount * sizeof(double));
@@ -103,12 +101,14 @@ int main(int argc, char **argv) {
 
     //Прямой ход метода Гаусса, приведение к треугольному виду.
     MainSwap pair;
-    for (i = 1; i < worldSize; ++i) {
-        for (j = 0; j < columnsPerNode; ++j) {
-            if (rank == i) {
-                int mainRow = columnsPerNode * (i - 1) + j;
-                int mainIndex = indexInLocalMatrix(equationCount, mainRow, j);
-                int upperBound = indexInLocalMatrix(equationCount, equationCount, j);
+    int activeNode;
+    for (activeNode = 1; activeNode < worldSize; ++activeNode) {
+        int column;
+        for (column = 0; column < columnsPerNode; ++column) {
+            if (rank == activeNode) {
+                int mainRow = columnsPerNode * (activeNode - 1) + column;
+                int mainIndex = indexInLocalMatrix(equationCount, mainRow, column);
+                int upperBound = indexInLocalMatrix(equationCount, equationCount, column);
                 int maxIndex = indexOfMaxInBounds(matrix, mainIndex, upperBound);
                 pair.mainRow = mainRow;
                 pair.rowToSwapWithMain = mainRow + maxIndex - mainIndex;
@@ -116,17 +116,17 @@ int main(int argc, char **argv) {
                     printf("Swap %d, %d\n", pair.mainRow, pair.rowToSwapWithMain);
                 }
             }
-            MPI_Bcast(&pair, 1, MPI_2INT, i, MPI_COMM_WORLD);
+            MPI_Bcast(&pair, 1, MPI_2INT, activeNode, MPI_COMM_WORLD);
             if (pair.mainRow != pair.rowToSwapWithMain) {
                 swapRows(equationCount, isMaster ? 1 : columnsPerNode, pair.mainRow, pair.rowToSwapWithMain, matrix);
             }
             //запоминаем главную строку
             int mainRow = pair.mainRow;
             double *multipliers = calloc((size_t) equationCount, sizeof(double));
-            if (rank == i) {
-                calculateMultipliers(mainRow, j, equationCount, matrix, multipliers);
+            if (rank == activeNode) {
+                calculateMultipliers(mainRow, column, equationCount, matrix, multipliers);
             }
-            MPI_Bcast(multipliers, equationCount, MPI_DOUBLE, i, MPI_COMM_WORLD);
+            MPI_Bcast(multipliers, equationCount, MPI_DOUBLE, activeNode, MPI_COMM_WORLD);
             modifyMatrix(equationCount, isMaster ? 1 : columnsPerNode, mainRow, matrix, multipliers);
             free(multipliers);
         }
@@ -161,14 +161,14 @@ void swapRows(int equationCount, int columnsPerNode, int firstRow, int secondRow
  * @param multipliers множители
  */
 void modifyMatrix(int equationCount, int columnsPerNode, int mainRow, double *matrix, double *multipliers) {
-    int k;
-    for (k = mainRow + 1; k < equationCount; ++k) {
-        if (multipliers[k] != 0) {
-            int l;
-            for (l = 0; l < columnsPerNode; ++l) {
-                int indexInMatrix = indexInLocalMatrix(equationCount, k, l);
-                int mainIndexInColumn = indexInLocalMatrix(equationCount, mainRow, l);
-                matrix[indexInMatrix] = matrix[indexInMatrix] - matrix[mainIndexInColumn] * multipliers[k];
+    int row;
+    for (row = mainRow + 1; row < equationCount; ++row) {
+        if (multipliers[row] != 0) {
+            int column;
+            for (column = 0; column < columnsPerNode; ++column) {
+                int indexInMatrix = indexInLocalMatrix(equationCount, row, column);
+                int mainIndexInColumn = indexInLocalMatrix(equationCount, mainRow, column);
+                matrix[indexInMatrix] = matrix[indexInMatrix] - matrix[mainIndexInColumn] * multipliers[row];
             }
         }
     }
@@ -194,9 +194,9 @@ int indexInLocalMatrix(int equationCount, int row, int column) {
  */
 void calculateMultipliers(int mainRow, int mainColumn, int equationCount, double *matrix, double *multipliers) {
     int mainIndex = indexInLocalMatrix(equationCount, mainRow, mainColumn);
-    int i;
-    for (i = mainRow + 1; i < equationCount; ++i) {
-        multipliers[i] = matrix[indexInLocalMatrix(equationCount, i, mainColumn)] / matrix[mainIndex];
+    int row;
+    for (row = mainRow + 1; row < equationCount; ++row) {
+        multipliers[row] = matrix[indexInLocalMatrix(equationCount, row, mainColumn)] / matrix[mainIndex];
     }
 }
 
@@ -209,11 +209,11 @@ void calculateMultipliers(int mainRow, int mainColumn, int equationCount, double
 int indexOfMaxInBounds(double *matrix, int lowerBound, int upperBound) {
     double max = matrix[lowerBound];
     int maxIndex = lowerBound;
-    int k;
-    for (k = lowerBound + 1; k < upperBound; ++k) {
-        if (max < matrix[k]) {
-            max = matrix[k];
-            maxIndex = k;
+    int index;
+    for (index = lowerBound + 1; index < upperBound; ++index) {
+        if (max < matrix[index]) {
+            max = matrix[index];
+            maxIndex = index;
         }
     }
     return maxIndex;
@@ -246,9 +246,9 @@ void generateColumnBlock(int numberOfEquations, int worldSize, int index, double
 }
 
 void generateResultArray(int equationCount, double *matrix) {
-    int k;
-    for (k = 0; k < equationCount; ++k) {
-        matrix[k] = generateNormalizedRandom() * 20 - 10;
+    int row;
+    for (row = 0; row < equationCount; ++row) {
+        matrix[row] = generateNormalizedRandom() * 20 - 10;
     }
 }
 
