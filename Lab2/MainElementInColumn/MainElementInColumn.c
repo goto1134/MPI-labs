@@ -27,6 +27,8 @@ int getEquationCountForDouble(int worldSize);
 
 void generateColumnBlock(int numberOfEquations, int worldSize, int index, double *block);
 
+void generateResultArray(int equationCount, double *matrix);
+
 double generateNormalizedRandom();
 
 int indexOfMaxInBounds(double *matrix, int lowerBound, int upperBound);
@@ -91,6 +93,8 @@ int main(int argc, char **argv) {
             MPI_Send(matrix, oneBlockSize, MPI_DOUBLE, i, INITIAL_MATRIX_TAG, MPI_COMM_WORLD);
         }
         free(matrix);
+        matrix = malloc(equationCount * sizeof(double));
+        generateResultArray(equationCount, matrix);
     } else {
         MPI_Recv(matrix, oneBlockSize, MPI_DOUBLE, MASTER_NODE_RANK, INITIAL_MATRIX_TAG, MPI_COMM_WORLD, &status);
     }
@@ -114,11 +118,7 @@ int main(int argc, char **argv) {
             }
             MPI_Bcast(&pair, 1, MPI_2INT, i, MPI_COMM_WORLD);
             if (pair.mainRow != pair.rowToSwapWithMain) {
-                if (isMaster) {
-                    // TODO SWAP rows;
-                } else {
-                    swapRows(equationCount, columnsPerNode, pair.mainRow, pair.rowToSwapWithMain, matrix);
-                }
+                swapRows(equationCount, isMaster ? 1 : columnsPerNode, pair.mainRow, pair.rowToSwapWithMain, matrix);
             }
             //запоминаем главную строку
             int mainRow = pair.mainRow;
@@ -127,20 +127,14 @@ int main(int argc, char **argv) {
                 calculateMultipliers(mainRow, j, equationCount, matrix, multipliers);
             }
             MPI_Bcast(multipliers, equationCount, MPI_DOUBLE, i, MPI_COMM_WORLD);
-            if (isMaster) {
-                //ToDo apply multipliers
-            } else {
-                modifyMatrix(equationCount, columnsPerNode, mainRow, matrix, multipliers);
-            }
+            modifyMatrix(equationCount, isMaster ? 1 : columnsPerNode, mainRow, matrix, multipliers);
             free(multipliers);
         }
     }
 
     //Матрица треугольная, обратный ход метода Гаусса.
 
-    if (!isMaster) {
-        free(matrix);
-    }
+    free(matrix);
     MPI_Finalize();
 }
 
@@ -248,6 +242,13 @@ void generateColumnBlock(int numberOfEquations, int worldSize, int index, double
                                   ? 10 + normalizedRandom * 100
                                   : normalizedRandom * 10;
         }
+    }
+}
+
+void generateResultArray(int equationCount, double *matrix) {
+    int k;
+    for (k = 0; k < equationCount; ++k) {
+        matrix[k] = generateNormalizedRandom() * 20 - 10;
     }
 }
 
