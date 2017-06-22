@@ -79,6 +79,7 @@ int main(int argc, char **argv) {
     MPI_Bcast(&columnsPerNode, 1, MPI_INT, MASTER_NODE_RANK, MPI_COMM_WORLD);
     MPI_Bcast(&oneBlockSize, 1, MPI_INT, MASTER_NODE_RANK, MPI_COMM_WORLD);
 
+    double timeBeforeStart = MPI_Wtime();
     double *matrix = malloc(oneBlockSize * sizeof(double));
     if (isMaster) {
         printf("Starting the sending of data\n");
@@ -95,6 +96,10 @@ int main(int argc, char **argv) {
         MPI_Recv(matrix, oneBlockSize, MPI_DOUBLE, MASTER_NODE_RANK, INITIAL_MATRIX_TAG, MPI_COMM_WORLD, &status);
     }
 
+    double timeAfterGenerating = MPI_Wtime();
+    if (isMaster) {
+        printf("Time for generating = %f\n", timeAfterGenerating - timeBeforeStart);
+    }
     MPI_Barrier(MPI_COMM_WORLD);
 
     //Прямой ход метода Гаусса, приведение к треугольному виду.
@@ -127,6 +132,11 @@ int main(int argc, char **argv) {
         }
     }
 
+    double timeAfterDirectRound = MPI_Wtime();
+    if (isMaster) {
+        printf("Time for direct round = %f\n", timeAfterDirectRound - timeAfterGenerating);
+    }
+
     //Матрица треугольная, обратный ход метода Гаусса.
     double *solution;
     double *row;
@@ -156,7 +166,8 @@ int main(int argc, char **argv) {
                 row[column] = matrix[indexInLocalMatrix(equationCount, equation, column)];
             }
         }
-        MPI_Gatherv(row, columnsPerNode, MPI_DOUBLE, row, receiveOffsets, dataMap, MPI_DOUBLE, MASTER_NODE_RANK,
+        int i;
+        MPI_Gatherv(row, columnsPerNode, MPI_DOUBLE, row, dataMap, receiveOffsets, MPI_DOUBLE, MASTER_NODE_RANK,
                     MPI_COMM_WORLD);
         if (isMaster) {
             solution[equation] = matrix[equation];
@@ -164,9 +175,14 @@ int main(int argc, char **argv) {
             for (solutionIndex = equationCount - 1; solutionIndex > equation; --solutionIndex) {
                 solution[equation] -= solution[solutionIndex] * row[solutionIndex];
             }
+            solution[equation] = solution[equation] / row[equation];
         }
     }
 
+    double timeAfterReverseRound = MPI_Wtime();
+    if (isMaster) {
+        printf("Time to get solution = %f\n", timeAfterReverseRound - timeAfterDirectRound);
+    }
     if (isMaster) {
         printf("Result is : [");
         for (equation = 0; equation < equationCount; ++equation) {
