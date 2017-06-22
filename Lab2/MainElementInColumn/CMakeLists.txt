@@ -1,6 +1,7 @@
 project(MPI_MainElementInColumn)
 
 set(SOURCE_FILES MainElementInColumn.c)
+find_package(MPI REQUIRED)
 
 add_executable(MPI_MainElementInColumn ${SOURCE_FILES})
 target_link_libraries(MPI_MainElementInColumn ${MPI_LIBRARIES})

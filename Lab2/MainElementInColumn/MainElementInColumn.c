@@ -8,6 +8,11 @@
 #include <stdlib.h>
 #include <time.h>
 
+typedef struct {
+    int mainRow;
+    int rowToSwapWithMain;
+} MainSwap;
+
 static const int MASTER_NODE_RANK = 0;
 
 static const int INITIAL_MATRIX_TAG = 1;
@@ -18,7 +23,21 @@ int minimumEquationCount(int dataTypeSizeInBytes, int numberOfComputationalNodes
 
 int getEquationCountForDouble(int worldSize);
 
-void fillMatrix(int numberOfEquations, int worldSize, int index, double *matrix);
+//void fillMatrix(int numberOfEquations, int worldSize, int index, double *matrix);
+
+void generateColumnBlock(int numberOfEquations, int worldSize, int index, double *block);
+
+double generateNormalizedRandom();
+
+int indexOfMaxInBounds(double *matrix, int lowerBound, int upperBound);
+
+void calculateMultipliers(int mainRow, int mainColumn, int equationCount, double *matrix, double *multipliers);
+
+int indexInLocalMatrix(int equationCount, int row, int column);
+
+void modifyMatrix(int equationCount, int columnsPerNode, int mainRow, double *matrix, double *multipliers);
+
+void swapRows(int equationCount, int columnsPerNode, int firstRow, int secondRow, double *matrix);
 
 int main(int argc, char **argv) {
 
@@ -41,23 +60,25 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    int i;
+    int j;
     int isMaster = rank == MASTER_NODE_RANK;
     int equationCount;
-    int equationsPerNode;
+    int columnsPerNode;
     int oneBlockSize;
 
     if (isMaster) {
         printf("World size is %d\n", worldSize);
 
         equationCount = getEquationCountForDouble(worldSize);
-        equationsPerNode = equationCount / (worldSize - 1);
-        oneBlockSize = (equationCount + 1) * equationsPerNode;
-        printf("Equation count is %d\nwith %d per node\nwith size of %d\n", equationCount, equationsPerNode,
+        columnsPerNode = equationCount / (worldSize - 1);
+        oneBlockSize = equationCount * columnsPerNode;
+        printf("Equation count is %d\nwith %d per node\nwith size of %d\n", equationCount, columnsPerNode,
                oneBlockSize);
     }
 
     MPI_Bcast(&equationCount, 1, MPI_INT, MASTER_NODE_RANK, MPI_COMM_WORLD);
-    MPI_Bcast(&equationsPerNode, 1, MPI_INT, MASTER_NODE_RANK, MPI_COMM_WORLD);
+    MPI_Bcast(&columnsPerNode, 1, MPI_INT, MASTER_NODE_RANK, MPI_COMM_WORLD);
     MPI_Bcast(&oneBlockSize, 1, MPI_INT, MASTER_NODE_RANK, MPI_COMM_WORLD);
 
     double *matrix = malloc(oneBlockSize * sizeof(double));
@@ -65,9 +86,8 @@ int main(int argc, char **argv) {
         printf("Starting the sending of data\n");
         srand((unsigned int) time(0));
 
-        int i;
         for (i = 1; i < worldSize; ++i) {
-            fillMatrix(equationCount, worldSize, i - 1, matrix);
+            generateColumnBlock(equationCount, worldSize, i - 1, matrix);
             MPI_Send(matrix, oneBlockSize, MPI_DOUBLE, i, INITIAL_MATRIX_TAG, MPI_COMM_WORLD);
         }
         free(matrix);
@@ -77,59 +97,182 @@ int main(int argc, char **argv) {
 
     MPI_Barrier(MPI_COMM_WORLD);
 
+    MainSwap pair;
+    for (i = 1; i < worldSize; ++i) {
+        for (j = 0; j < columnsPerNode; ++j) {
+            if (rank == i) {
+                int mainRow = columnsPerNode * (i - 1) + j;
+                int mainIndex = indexInLocalMatrix(equationCount, mainRow, j);
+                int upperBound = indexInLocalMatrix(equationCount, equationCount, j);
+                int maxIndex = indexOfMaxInBounds(matrix, mainIndex, upperBound);
+                pair.mainRow = mainRow;
+                pair.rowToSwapWithMain = mainRow + maxIndex - mainIndex;
+                if (pair.mainRow != pair.rowToSwapWithMain) {
+                    printf("Swap %d, %d\n", pair.mainRow, pair.rowToSwapWithMain);
+                }
+            }
+            MPI_Bcast(&pair, 1, MPI_2INT, i, MPI_COMM_WORLD);
+            if (pair.mainRow != pair.rowToSwapWithMain) {
+                if (isMaster) {
+                    // TODO SWAP rows;
+                } else {
+                    swapRows(equationCount, columnsPerNode, pair.mainRow, pair.rowToSwapWithMain, matrix);
+                }
+            }
+            //запоминаем главную строку
+            int mainRow = pair.mainRow;
+            double *multipliers = calloc(equationCount, sizeof(double));
+            if (rank == i) {
+                int offset = equationCount * j;
+                int mainIndex = indexInLocalMatrix(equationCount, mainRow, j);
+                calculateMultipliers(mainRow, 0, equationCount, matrix, multipliers);
+            }
+            MPI_Bcast(multipliers, equationCount, MPI_DOUBLE, i, MPI_COMM_WORLD);
+            if (isMaster) {
+
+            } else {
+
+                modifyMatrix(equationCount, columnsPerNode, mainRow, matrix, multipliers);
+            }
+            free(multipliers);
+        }
+    }
+
     // Данные разосланы.
 
 
-
-
-//    if (isMaster) {
-//        start = clock();
-//    }
-//
-//    char receive = 0;
-//    int sending;
-//    for (sending = 0; sending < numberOfSendings; ++sending) {
-//        MPI_Reduce(&rank, &receive, 1, MPI_BYTE, MPI_SUM, 0, MPI_COMM_WORLD);
-//    }
-//
-//    if (isMaster) {
-//        end = clock();
-//        timeForNReduce = (double) (end - start) / CLOCKS_PER_SEC;
-//        printf("time for %d reduce operations = %f \n", numberOfSendings, timeForNReduce);
-//        printf("OPS = %f\n", (double) numberOfSendings / timeForNReduce);
-//
-//    }
     if (!isMaster) {
         free(matrix);
     }
     MPI_Finalize();
 }
 
-int getEquationCountForDouble(int worldSize) {
-    int doubleSize = sizeof(double);
-    int oneHundreedMegaBytes = 100 * 1024 * 1024;
-    int minValue = minimumEquationCount(doubleSize, worldSize - 1, oneHundreedMegaBytes);
-    return minValue - minValue % (worldSize - 1) + worldSize - 1;
-}
-
-void fillMatrix(int numberOfEquations, int worldSize, int index, double *block) {
-    int blockSize = numberOfEquations / (worldSize - 1);
-    int i;
-    int j;
-    int mainIndex;
-    for (i = 0; i < blockSize; ++i) {
-        for (j = 0; j < numberOfEquations - 1; ++j) {
-            mainIndex = index * (worldSize - 1) + i;
-            block[i * numberOfEquations + j] = j == mainIndex
-                                               ? 10 + (double) rand() / (double) RAND_MAX * 100
-                                               : ((double) rand() / (double) RAND_MAX) * 10;
-        }
-        block[i * numberOfEquations + numberOfEquations - 1] = ((double) rand() / (double) RAND_MAX) * 20 - 10;
+void swapRows(int equationCount, int columnsPerNode, int firstRow, int secondRow, double *matrix) {
+    int column;
+    double buf;
+    int mainRowElementIndex;
+    int secondRowElementIndex;
+    for (column = 0; column < columnsPerNode; ++column) {
+        mainRowElementIndex = indexInLocalMatrix(equationCount, firstRow, column);
+        secondRowElementIndex = indexInLocalMatrix(equationCount, secondRow, column);
+        buf = matrix[mainRowElementIndex];
+        matrix[mainRowElementIndex] = matrix[secondRowElementIndex];
+        matrix[secondRowElementIndex] = buf;
     }
 }
 
+/**
+ * Изменяет матрицу при прямом проходе, вычитая из строк элементы главной строки помноженные на заданные множители
+ * @param equationCount
+ * @param columnsPerNode
+ * @param mainRow
+ * @param matrix локальная матрица
+ * @param multipliers множители
+ */
+void modifyMatrix(int equationCount, int columnsPerNode, int mainRow, double *matrix, double *multipliers) {
+    int k;
+    for (k = 0; k < equationCount; ++k) {
+        if (multipliers[k] != 0) {
+            int l;
+            for (l = 0; l < columnsPerNode; ++l) {
+                int indexInMatrix = indexInLocalMatrix(equationCount, k, l);
+                int mainIndexInColumn = indexInLocalMatrix(equationCount, mainRow, l);
+                matrix[indexInMatrix] = matrix[indexInMatrix] - matrix[mainIndexInColumn] * multipliers[k];
+            }
+        }
+    }
+}
+
+/**
+ * @param equationCount количество уравнений в системе
+ * @param row строка
+ * @param column столбец
+ * @return Индекс элемента в локальной матрице
+ */
+int indexInLocalMatrix(int equationCount, int row, int column) {
+    return row + equationCount * column;
+}
+
+/**
+ * Вычисляет множители для преобразования матрицы
+ * @param mainRow строка главного элемента
+ * @param mainColumn колонка с главным элементом
+ * @param equationCount
+ * @param matrix
+ * @param multipliers массив множителей
+ */
+void calculateMultipliers(int mainRow, int mainColumn, int equationCount, double *matrix, double *multipliers) {
+    int mainIndex = indexInLocalMatrix(equationCount, mainRow, mainColumn);
+    int i;
+    for (i = mainRow + 1; i < equationCount; ++i) {
+        multipliers[i] = matrix[indexInLocalMatrix(equationCount, i, mainColumn)] / matrix[mainIndex];
+    }
+}
+
+/**
+ * @param matrix локальная матрица
+ * @param lowerBound нижняя граница, включена
+ * @param upperBound верхняя грацица, не включена
+ * @return Индекс максимального элемента в промежутке
+ */
+int indexOfMaxInBounds(double *matrix, int lowerBound, int upperBound) {
+    double max = matrix[lowerBound];
+    int maxIndex = lowerBound;
+    int k;
+    for (k = lowerBound + 1; k < upperBound; ++k) {
+        if (max < matrix[k]) {
+            max = matrix[k];
+            maxIndex = k;
+        }
+    }
+    return maxIndex;
+}
+
+int getEquationCountForDouble(int worldSize) {
+    int doubleSize = sizeof(double);
+    int oneHundredMegaBytes = 100 * 1024 * 1024;
+    int minValue = minimumEquationCount(doubleSize, worldSize - 1, oneHundredMegaBytes);
+    return minValue - minValue % (worldSize - 1) + worldSize - 1;
+}
+
+void generateColumnBlock(int numberOfEquations, int worldSize, int index, double *block) {
+    int columnCount = numberOfEquations / (worldSize - 1);
+    int column;
+    int row;
+    int mainIndex;
+    int currentIndex;
+    double normalizedRandom;
+    for (column = 0; column < columnCount; ++column) {
+        mainIndex = indexInLocalMatrix(numberOfEquations, index * columnCount + column, column);
+        for (row = 0; row < columnCount; ++row) {
+            currentIndex = indexInLocalMatrix(numberOfEquations, row, column);
+            normalizedRandom = generateNormalizedRandom();
+            block[currentIndex] = currentIndex == mainIndex
+                                  ? 10 + normalizedRandom * 100
+                                  : normalizedRandom * 10;
+        }
+    }
+}
+
+double generateNormalizedRandom() { return rand() / (double) RAND_MAX; }
+
+//void fillMatrix(int numberOfEquations, int worldSize, int index, double *block) {
+//    int blockSize = numberOfEquations / (worldSize - 1);
+//    int i;
+//    int j;
+//    int mainIndex;
+//    for (i = 0; i < blockSize; ++i) {
+//        for (j = 0; j < numberOfEquations - 1; ++j) {
+//            mainIndex = index * (worldSize - 1) + i;
+//            block[i * numberOfEquations + j] = j == mainIndex
+//                                               ? 10 + (double) rand() / (double) RAND_MAX * 100
+//                                               : ((double) rand() / (double) RAND_MAX) * 10;
+//        }
+//        block[i * numberOfEquations + numberOfEquations - 1] = ((double) rand() / (double) RAND_MAX) * 20 - 10;
+//    }
+//}
+
 int minimumEquationCount(int dataTypeSizeInBytes, int numberOfComputationalNodes, int minimumSizeOfSystemPerNode) {
-    return (int) ceil((sqrt((4. * minimumSizeOfSystemPerNode * numberOfComputationalNodes + dataTypeSizeInBytes)
-                            / (double) dataTypeSizeInBytes) - 1.)
-                      / 2.);
+    return (int) ceil((sqrt((minimumSizeOfSystemPerNode * numberOfComputationalNodes)
+                            / (double) dataTypeSizeInBytes)));
 }
