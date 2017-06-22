@@ -123,13 +123,11 @@ int main(int argc, char **argv) {
             int mainRow = pair.mainRow;
             double *multipliers = calloc(equationCount, sizeof(double));
             if (rank == i) {
-                int offset = equationCount * j;
-                int mainIndex = indexInLocalMatrix(equationCount, mainRow, j);
-                calculateMultipliers(mainRow, 0, equationCount, matrix, multipliers);
+                calculateMultipliers(mainRow, j, equationCount, matrix, multipliers);
             }
             MPI_Bcast(multipliers, equationCount, MPI_DOUBLE, i, MPI_COMM_WORLD);
             if (isMaster) {
-
+                //ToDo apply multipliers
             } else {
 
                 modifyMatrix(equationCount, columnsPerNode, mainRow, matrix, multipliers);
