@@ -17,13 +17,9 @@ static const int MASTER_NODE_RANK = 0;
 
 static const int INITIAL_MATRIX_TAG = 1;
 
-static const int CURRENT_WORKER_TAG = 2;
-
 int minimumEquationCount(int dataTypeSizeInBytes, int numberOfComputationalNodes, int minimumSizeOfSystemPerNode);
 
 int getEquationCountForDouble(int worldSize);
-
-//void fillMatrix(int numberOfEquations, int worldSize, int index, double *matrix);
 
 void generateColumnBlock(int numberOfEquations, int worldSize, int index, double *block);
 
@@ -40,6 +36,8 @@ int indexInLocalMatrix(int equationCount, int row, int column);
 void modifyMatrix(int equationCount, int columnsPerNode, int mainRow, double *matrix, double *multipliers);
 
 void swapRows(int equationCount, int columnsPerNode, int firstRow, int secondRow, double *matrix);
+
+void printMatrix(int rowCount, int columnCOunt, double *matrix);
 
 int main(int argc, char **argv) {
 
@@ -112,9 +110,6 @@ int main(int argc, char **argv) {
                 int maxIndex = indexOfMaxInBounds(matrix, mainIndex, upperBound);
                 pair.mainRow = mainRow;
                 pair.rowToSwapWithMain = mainRow + maxIndex - mainIndex;
-                if (pair.mainRow != pair.rowToSwapWithMain) {
-                    printf("Swap %d, %d\n", pair.mainRow, pair.rowToSwapWithMain);
-                }
             }
             MPI_Bcast(&pair, 1, MPI_2INT, activeNode, MPI_COMM_WORLD);
             if (pair.mainRow != pair.rowToSwapWithMain) {
@@ -133,9 +128,72 @@ int main(int argc, char **argv) {
     }
 
     //Матрица треугольная, обратный ход метода Гаусса.
+    double *solution;
+    double *row;
+    if (isMaster) {
+        solution = calloc((size_t) equationCount, sizeof(double));
+        row = calloc((size_t) equationCount, sizeof(double));
+    } else {
+        row = calloc((size_t) columnsPerNode, sizeof(double));
+    }
 
+    int *dataMap = calloc((size_t) worldSize, sizeof(int));
+    int *receiveOffsets = calloc((size_t) worldSize, sizeof(int));
+    int nonMasterNode;
+    for (nonMasterNode = 1; nonMasterNode < worldSize; ++nonMasterNode) {
+        dataMap[nonMasterNode] = columnsPerNode;
+        receiveOffsets[nonMasterNode] = columnsPerNode * (nonMasterNode - 1);
+    }
+
+    if (isMaster) {
+        printf("Calculating result\n");
+    }
+    int equation;
+    for (equation = equationCount - 1; equation >= 0; --equation) {
+        if (!isMaster) {
+            int column;
+            for (column = 0; column < columnsPerNode; ++column) {
+                row[column] = matrix[indexInLocalMatrix(equationCount, equation, column)];
+            }
+        }
+        MPI_Gatherv(row, columnsPerNode, MPI_DOUBLE, row, receiveOffsets, dataMap, MPI_DOUBLE, MASTER_NODE_RANK,
+                    MPI_COMM_WORLD);
+        if (isMaster) {
+            solution[equation] = matrix[equation];
+            int solutionIndex;
+            for (solutionIndex = equationCount - 1; solutionIndex > equation; --solutionIndex) {
+                solution[equation] -= solution[solutionIndex] * row[solutionIndex];
+            }
+        }
+    }
+
+    if (isMaster) {
+        printf("Result is : [");
+        for (equation = 0; equation < equationCount; ++equation) {
+            printf(" %f,", solution[equation]);
+        }
+        printf("]\n");
+        free(solution);
+    }
+    free(row);
+    free(dataMap);
+    free(receiveOffsets);
     free(matrix);
     MPI_Finalize();
+}
+
+void printMatrix(int rowCount, int columnCount, double *matrix) {
+    printf("[\n");
+    int row;
+    for (row = 0; row < rowCount; ++row) {
+        printf("[");
+        int column;
+        for (column = 0; column < columnCount; ++column) {
+            printf(" %f,", matrix[indexInLocalMatrix(rowCount, row, column)]);
+        }
+        printf("]\n");
+    }
+    printf("]\n");
 }
 
 void swapRows(int equationCount, int columnsPerNode, int firstRow, int secondRow, double *matrix) {
@@ -235,7 +293,7 @@ void generateColumnBlock(int numberOfEquations, int worldSize, int index, double
     double normalizedRandom;
     for (column = 0; column < columnCount; ++column) {
         mainIndex = indexInLocalMatrix(numberOfEquations, index * columnCount + column, column);
-        for (row = 0; row < columnCount; ++row) {
+        for (row = 0; row < numberOfEquations; ++row) {
             currentIndex = indexInLocalMatrix(numberOfEquations, row, column);
             normalizedRandom = generateNormalizedRandom();
             block[currentIndex] = currentIndex == mainIndex
@@ -253,22 +311,6 @@ void generateResultArray(int equationCount, double *matrix) {
 }
 
 double generateNormalizedRandom() { return rand() / (double) RAND_MAX; }
-
-//void fillMatrix(int numberOfEquations, int worldSize, int index, double *block) {
-//    int blockSize = numberOfEquations / (worldSize - 1);
-//    int i;
-//    int j;
-//    int mainIndex;
-//    for (i = 0; i < blockSize; ++i) {
-//        for (j = 0; j < numberOfEquations - 1; ++j) {
-//            mainIndex = index * (worldSize - 1) + i;
-//            block[i * numberOfEquations + j] = j == mainIndex
-//                                               ? 10 + (double) rand() / (double) RAND_MAX * 100
-//                                               : ((double) rand() / (double) RAND_MAX) * 10;
-//        }
-//        block[i * numberOfEquations + numberOfEquations - 1] = ((double) rand() / (double) RAND_MAX) * 20 - 10;
-//    }
-//}
 
 int minimumEquationCount(int dataTypeSizeInBytes, int numberOfComputationalNodes, int minimumSizeOfSystemPerNode) {
     return (int) ceil((sqrt((minimumSizeOfSystemPerNode * numberOfComputationalNodes)
