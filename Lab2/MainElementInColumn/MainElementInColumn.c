@@ -97,6 +97,7 @@ int main(int argc, char **argv) {
 
     MPI_Barrier(MPI_COMM_WORLD);
 
+    //Прямой ход метода Гаусса, приведение к треугольному виду.
     MainSwap pair;
     for (i = 1; i < worldSize; ++i) {
         for (j = 0; j < columnsPerNode; ++j) {
@@ -129,15 +130,13 @@ int main(int argc, char **argv) {
             if (isMaster) {
                 //ToDo apply multipliers
             } else {
-
                 modifyMatrix(equationCount, columnsPerNode, mainRow, matrix, multipliers);
             }
             free(multipliers);
         }
     }
 
-    // Данные разосланы.
-
+    //Матрица треугольная, обратный ход метода Гаусса.
 
     if (!isMaster) {
         free(matrix);
@@ -169,7 +168,7 @@ void swapRows(int equationCount, int columnsPerNode, int firstRow, int secondRow
  */
 void modifyMatrix(int equationCount, int columnsPerNode, int mainRow, double *matrix, double *multipliers) {
     int k;
-    for (k = 0; k < equationCount; ++k) {
+    for (k = mainRow + 1; k < equationCount; ++k) {
         if (multipliers[k] != 0) {
             int l;
             for (l = 0; l < columnsPerNode; ++l) {
