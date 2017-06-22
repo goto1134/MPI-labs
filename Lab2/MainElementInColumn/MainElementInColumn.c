@@ -52,8 +52,6 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     MPI_Status status;
-    clock_t start, end;
-    double timeForNSendings, timeForNReduce;
 
     if (worldSize < 2) {
         printf("World is too small\n");
