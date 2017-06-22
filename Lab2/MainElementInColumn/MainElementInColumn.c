@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
             }
             //запоминаем главную строку
             int mainRow = pair.mainRow;
-            double *multipliers = calloc(equationCount, sizeof(double));
+            double *multipliers = calloc((size_t) equationCount, sizeof(double));
             if (rank == i) {
                 calculateMultipliers(mainRow, j, equationCount, matrix, multipliers);
             }
