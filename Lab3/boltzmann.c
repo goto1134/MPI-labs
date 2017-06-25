@@ -143,6 +143,7 @@ int main(int argc, char *argv[]) {
     } else {
         snapshot = calloc((size_t) grid.height * grid.width, sizeof(MacroData));
     }
+    MPI_Barrier(MPI_COMM_WORLD);
     double timeBefore = MPI_Wtime();
     for (int i = 0; i < totalTime; i++) {
         if (i % snapshotRate == 0) {
@@ -160,6 +161,7 @@ int main(int argc, char *argv[]) {
             collision(&grid);
         }
     }
+    MPI_Barrier(MPI_COMM_WORLD);
     double timeAfter = MPI_Wtime();
     if (isMaster) {
         printf("Algorithm time is %lf", timeAfter - timeBefore);
