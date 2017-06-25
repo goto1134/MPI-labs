@@ -2,6 +2,7 @@ project(Boltzman)
 
 set(SOURCE_FILES boltzmann.c)
 find_package(MPI REQUIRED)
+set(CMAKE_C_STANDARD 99)
 
 add_executable(Boltzman ${SOURCE_FILES})
 target_link_libraries(Boltzman ${MPI_LIBRARIES})
